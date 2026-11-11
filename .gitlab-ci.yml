@@ -1,0 +1,83 @@
+stages:
+  - install
+  - test
+  - build
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+
+install_backend:
+  stage: install
+  image: node:20-alpine
+  script:
+    - echo "📦 Installing backend dependencies..."
+    - cd backend && npm ci
+    - echo "✅ Backend dependencies installed"
+  cache:
+    paths:
+      - backend/node_modules/
+    key: backend-$CI_COMMIT_REF_SLUG
+
+install_frontend:
+  stage: install
+  image: node:20-alpine
+  script:
+    - echo "📦 Installing frontend dependencies..."
+    - cd frontend && npm ci
+    - echo "✅ Frontend dependencies installed"
+  cache:
+    paths:
+      - frontend/node_modules/
+    key: frontend-$CI_COMMIT_REF_SLUG
+
+test_backend:
+  stage: test
+  image: node:20-alpine
+  script:
+    - echo "🧪 Running tests..."
+    - cd backend
+    - npm ci
+    - npm test
+    - echo "✅ All tests passed"
+
+build_and_push_backend:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+  script:
+    - echo "🐳 Building and pushing backend..."
+    - docker build -t "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHORT_SHA" -t "$CI_REGISTRY_IMAGE/backend:latest" ./backend
+    - docker push "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHORT_SHA"
+    - docker push "$CI_REGISTRY_IMAGE/backend:latest"
+    - echo "✅ Backend image pushed"
+  only:
+    - main
+
+build_and_push_frontend:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+  script:
+    - echo "🐳 Building and pushing frontend..."
+    - docker build -t "$CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHORT_SHA" -t "$CI_REGISTRY_IMAGE/frontend:latest" ./frontend
+    - docker push "$CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHORT_SHA"
+    - docker push "$CI_REGISTRY_IMAGE/frontend:latest"
+    - echo "✅ Frontend image pushed"
+  only:
+    - main
+
+deploy_echo:
+  stage: deploy
+  script:
+    - echo "Deployment successful"
+  only:
+    - main
+    - develop
